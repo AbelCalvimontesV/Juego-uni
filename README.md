@@ -1,4 +1,4 @@
-# Pixel Boxing Club
+# SC BOXING
 
 ## Open the project
 1. Extract the ZIP file.
