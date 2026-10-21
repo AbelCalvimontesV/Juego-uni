@@ -1,0 +1,38 @@
+[gd_scene format=3 uid="uid://dsy4e000rosr8"]
+
+[ext_resource type="Texture2D" uid="uid://co7tt3x6abiky" path="res://assets/ringImagen.jpeg" id="1_71x6v"]
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_8w0r3"]
+a = Vector2(365, -2)
+b = Vector2(1, -200)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_h4t55"]
+a = Vector2(372, 0)
+b = Vector2(7, 212)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_w7mgy"]
+a = Vector2(0, 209)
+b = Vector2(-388, 8)
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_4e15o"]
+a = Vector2(3, -201)
+b = Vector2(-384, -3)
+
+[node name="Ring" type="Node2D" unique_id=1164042054]
+
+[node name="Backround" type="Sprite2D" parent="." unique_id=731678616]
+texture = ExtResource("1_71x6v")
+
+[node name="StaticBody2D" type="StaticBody2D" parent="." unique_id=260285272]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="StaticBody2D" unique_id=176567337]
+shape = SubResource("SegmentShape2D_8w0r3")
+
+[node name="CollisionShape2D2" type="CollisionShape2D" parent="StaticBody2D" unique_id=410436844]
+shape = SubResource("SegmentShape2D_h4t55")
+
+[node name="CollisionShape2D3" type="CollisionShape2D" parent="StaticBody2D" unique_id=84144480]
+shape = SubResource("SegmentShape2D_w7mgy")
+
+[node name="CollisionShape2D4" type="CollisionShape2D" parent="StaticBody2D" unique_id=1768911152]
+shape = SubResource("SegmentShape2D_4e15o")
