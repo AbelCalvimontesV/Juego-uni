@@ -1,7 +1,7 @@
 78098b89c88a74ebe8c20117b8754620
-::res://::1792635728
+::res://::1792642951
 README.md::TextFile::-1::1792635688::0::1::::<><><>0<>0<><>::
-::res://assets/::1792638450
+::res://assets/::1792639910
 chichoSprites.jpeg::CompressedTexture2D::1542578968639118312::1792635688::1792635729::1::::<><><>0<>0<>f3b2182d86c48d11707ab49177d4b171<>res://.godot/imported/chichoSprites.jpeg-689192a9e7d5f91293542de1cf9ed784.ctex::
 chichoSpritesCritical.jpg::CompressedTexture2D::9206894873909417108::1792635688::1792635729::1::::<><><>0<>0<>9dfc06d051aedd55412bab7686be5b72<>res://.godot/imported/chichoSpritesCritical.jpg-69d0c82bfe38c1792422938d2b6358d1.ctex::
 chichoSpritesCross.jpg::CompressedTexture2D::3008017616221075029::1792635688::1792635729::1::::<><><>0<>0<>e0ef1d6d2fe7f4b5cf9867909332ae55<>res://.godot/imported/chichoSpritesCross.jpg-db18c6a1221445cbeb72b9ac818201f7.ctex::
@@ -14,7 +14,7 @@ chichoSpritesko.jpg::CompressedTexture2D::1625023420170211135::1792635688::17926
 chichoSpritespatada.jpg::CompressedTexture2D::531115656020208876::1792635688::1792635728::1::::<><><>0<>0<>85475e4b18484a702825ae39dc8d896b<>res://.godot/imported/chichoSpritespatada.jpg-01624b0c7ac76c6facb50ec6910e455f.ctex::
 chichoSpriteswa.jpg::CompressedTexture2D::5629986676106900753::1792635688::1792635728::1::::<><><>0<>0<>9c7407093fab70ef4035b776c4508748<>res://.godot/imported/chichoSpriteswa.jpg-85e4be695c3274ffdb45ae3230100c5a.ctex::
 chichoSpriteswalk.jpg::CompressedTexture2D::4370655740120877455::1792635688::1792635728::1::::<><><>0<>0<>4cb18c9a8121c9044c73d50a15dbe750<>res://.godot/imported/chichoSpriteswalk.jpg-132165b2a20c973869d2a51124df8b1d.ctex::
-chroma_key.gdshader::Shader::3413461848763301801::1792635688::0::1::::<><><>0<>0<><>::
+chroma_key.gdshader::Shader::3413461848763301801::1792639910::0::1::::<><><>0<>0<><>::
 ringImagen.jpeg::CompressedTexture2D::5822734326988176820::1792635688::1792635729::1::::<><><>0<>0<>c5c9941e65c0ffd4da99c5205f36048b<>res://.godot/imported/ringImagen.jpeg-de391626633b284285672d984e2a8995.ctex::
 SPARKLE.PNG::CompressedTexture2D::299849895680824068::1792638450::1792638454::1::::<><><>0<>0<>69b8c6eb55c1b871f6d641ba28fca23a<>res://.godot/imported/SPARKLE.PNG-b5fd5fa7f445d4e0af2117ed1e76b5b3.ctex::
 spritesDefault.jpeg::CompressedTexture2D::233565979516876999::1792635689::1792635729::1::::<><><>0<>0<>9618d4eb022fdf8fdde5a9a180f257f1<>res://.godot/imported/spritesDefault.jpeg-d04025006cb5a7abe8a3a8d64cc1b270.ctex::
@@ -61,11 +61,11 @@ ui_click.wav::AudioStreamWAV::6590527948202938112::1792635689::1792635729::1::::
 ui_error.wav::AudioStreamWAV::8825939780474850835::1792635689::1792635729::1::::<><><>0<>0<>baa654a371f2b6e9c17bdff40a0db38f<>res://.godot/imported/ui_error.wav-32f2116ed258ce93304c31ed2ce8c819.sample::
 ui_hover.wav::AudioStreamWAV::2286356890166580793::1792635689::1792635729::1::::<><><>0<>0<>3278f73d4376636a769fd37fd2ba4b20<>res://.godot/imported/ui_hover.wav-e8532001b0f3258b9ba03aefba32a561.sample::
 victory.wav::AudioStreamWAV::1134477922316324554::1792635689::1792635729::1::::<><><>0<>0<>5788961e86c2e2750df499cd0e92ca03<>res://.godot/imported/victory.wav-d893d32ad919f27e15cf04d35e288b78.sample::
-::res://Scenes/::1792636852
+::res://Scenes/::1792641511
 Boxer.tscn::PackedScene::1932581715291223047::1792635688::0::1::::<><><>0<>0<><>::uid://c65x3716h0je2::::res://scripts/combat/boxer.gd<>uid://bovrhn6040o46::::res://assets/chroma_key.gdshader<>uid://dy4lghg8xeq0n::::res://assets/spritesDefaultblock.jpg<>uid://bu8gp12lj32dg::::res://assets/spritesDefaultWalk.jpg<>uid://cjj6es56n8suy::::res://assets/spritesDefaultcross.jpg<>uid://1sfj2aeunfjb::::res://assets/spritesDefaultDash.jpg<>uid://bxa31uwv8ytu5::::res://assets/spritesDefaulthit.jpg<>uid://cxyc63t0hm1s6::::res://assets/spritesDefaultjab.jpg<>uid://bv4thusxd67hs::::res://assets/spritesDefaultko.jpg<>uid://brylqjayrg1gw::::res://assets/spritesDefaultUpper.jpg
+HitEffect.tscn::PackedScene::4657058106288784055::1792641511::0::1::::<><><>0<>0<><>::uid://r26nbxojb3rh::::res://scripts/managers/hit_effect.gd<>uid://ejiqpqc4uliy::::res://assets/SPARKLE.PNG
 Main.tscn::PackedScene::2812345397929729310::1792635688::0::1::::<><><>0<>0<><>::uid://vlmp15y4lmsm::::res://scripts/managers/fight_manager.gd<>uid://dsy4e000rosr8::::res://Scenes/Ring.tscn<>uid://2sflrkj5mid8::::res://Scenes/Boxer.tscn<>uid://dunwbiplnc5go::::res://Scenes/enemies/BasicEnemy.tscn
 Main_TestBoss1.tscn::PackedScene::6541396480173786681::1792635688::0::1::::<><><>0<>0<><>::uid://vlmp15y4lmsm::::res://scripts/managers/fight_manager.gd<>uid://dsy4e000rosr8::::res://Scenes/Ring.tscn<>uid://2sflrkj5mid8::::res://Scenes/Boxer.tscn<>uid://dunwbiplnc5go::::res://Scenes/enemies/BasicEnemy.tscn
-HitEffect.tscn::PackedScene::4657058106288784055::1792636852::0::1::::<><><>0<>0<><>::uid://r26nbxojb3rh::::res://scripts/managers/hit_effect.gd
 Ring.tscn::PackedScene::8473975591490206731::1792635688::0::1::::<><><>0<>0<><>::uid://co7tt3x6abiky::::res://assets/ringImagen.jpeg
 ::res://Scenes/enemies/::1792635688
 BasicEnemy.tscn::PackedScene::8591213838153637970::1792635688::0::1::::<><><>0<>0<><>::uid://c65x3716h0je2::::res://scripts/combat/boxer.gd<>uid://bovrhn6040o46::::res://assets/chroma_key.gdshader<>uid://dy4lghg8xeq0n::::res://assets/spritesDefaultblock.jpg<>uid://cjj6es56n8suy::::res://assets/spritesDefaultcross.jpg<>uid://1sfj2aeunfjb::::res://assets/spritesDefaultDash.jpg<>uid://bxa31uwv8ytu5::::res://assets/spritesDefaulthit.jpg<>uid://cxyc63t0hm1s6::::res://assets/spritesDefaultjab.jpg<>uid://bv4thusxd67hs::::res://assets/spritesDefaultko.jpg<>uid://brylqjayrg1gw::::res://assets/spritesDefaultUpper.jpg<>uid://bu8gp12lj32dg::::res://assets/spritesDefaultWalk.jpg
@@ -80,8 +80,8 @@ boss2.gd::GDScript::1864863475606537035::1792635689::0::1::::<>Boxer<><>0<>0<><>
 boss_ai.gd::GDScript::6109030431902769354::1792635689::0::1::::<>Node<><>0<>0<><>::
 boxing_ai.gd::GDScript::8818178705937637106::1792635689::0::1::::<>RefCounted<><>0<>0<><>::
 boxing_ai.tscn::PackedScene::4098622800834794161::1792635689::0::1::::<><><>0<>0<><>::
-::res://scripts/combat/::1792636852
-boxer.gd::GDScript::7012075068180930143::1792636852::0::1::::Boxer<>CharacterBody2D<><>0<>0<><>::
+::res://scripts/combat/::1792642777
+boxer.gd::GDScript::7012075068180930143::1792642777::0::1::::Boxer<>CharacterBody2D<><>0<>0<><>::
 ::res://scripts/managers/::1792636562
 fight_camera.gd::GDScript::7129861805828475461::1792635689::0::1::::<>Node<><>0<>0<><>::
 fight_manager.gd::GDScript::1497430675595995592::1792635689::0::1::::<>Node2D<><>0<>0<><>::

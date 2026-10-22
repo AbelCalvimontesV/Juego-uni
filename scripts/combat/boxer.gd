@@ -3,7 +3,10 @@ extends CharacterBody2D
 class_name Boxer
 
 const BoxingAIController = preload("res://scripts/AI/boxing_ai.gd")
+ 
 const HIT_EFFECT_SCENE = preload("res://Scenes/HitEffect.tscn")
+
+
 
 signal stats_changed(boxer: Boxer)
 signal knocked_out(boxer: Boxer)
@@ -173,6 +176,9 @@ func _physics_process(delta: float) -> void:
 	if is_out:
 		velocity = Vector2.ZERO
 		knockback_velocity = Vector2.ZERO
+
+		_play_anim(anim_ko)
+
 		return
 
 	footstep_timer = maxf(0.0, footstep_timer - delta)
@@ -599,6 +605,7 @@ func _try_hit_body(body: Node2D, hitbox: Area2D) -> void:
 	if hit_targets.has(target_id):
 		return
 
+
 	
 	hit_targets[target_id] = true
 
@@ -608,6 +615,14 @@ func _try_hit_body(body: Node2D, hitbox: Area2D) -> void:
 )
 
 	_spawn_hit_effect(target)
+
+
+	hit_targets[target_id] = true
+
+	print(
+		boxer_name, " conectó ", hitbox.name,
+		" contra ", target.boxer_name
+	)
 
 
 	# Si se activa AttackCritical, el daño es el 25 %
@@ -742,6 +757,7 @@ func receive_hit(
 		attack_animation_active = false
 		current_animation = &""
 
+
 		# El KO se reproduce una sola vez y no debe entrar en bucle.
 		if animated_sprite.sprite_frames != null:
 			if animated_sprite.sprite_frames.has_animation(anim_ko):
@@ -755,6 +771,9 @@ func receive_hit(
 				animated_sprite.play(anim_ko)
 			else:
 				push_warning("No existe la animación de KO: " + String(anim_ko))
+
+
+		_play_anim(anim_ko)
 
 		SoundManager.play_sfx("knockout", 0.0, 0.03)
 		knocked_out.emit(self)
@@ -808,7 +827,9 @@ func _play_anim(anim_name: StringName) -> void:
 		push_warning("No existe la animación: " + String(anim_name))
 		return
 
+
 	# No reiniciar una animación que ya está reproduciéndose.
+
 	if current_animation == anim_name and animated_sprite.is_playing():
 		return
 
