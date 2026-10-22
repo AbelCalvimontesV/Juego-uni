@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://c0gx3ybdf66n2"]
+
+[ext_resource type="Script" uid="uid://vlmp15y4lmsm" path="res://scripts/managers/fight_manager.gd" id="1_b00dj"]
+[ext_resource type="PackedScene" uid="uid://dsy4e000rosr8" path="res://Scenes/Ring.tscn" id="2_55xaa"]
+[ext_resource type="PackedScene" uid="uid://2sflrkj5mid8" path="res://Scenes/Boxer.tscn" id="3_yfsih"]
+[ext_resource type="PackedScene" uid="uid://dunwbiplnc5go" path="res://Scenes/enemies/BasicEnemy.tscn" id="4_2t2xs"]
+
+[node name="Main" type="Node2D" unique_id=182773683]
+script = ExtResource("1_b00dj")
+
+[node name="Ring" parent="." unique_id=1164042054 instance=ExtResource("2_55xaa")]
+position = Vector2(512, 512)
+
+[node name="Boxer" parent="." unique_id=401407544 instance=ExtResource("3_yfsih")]
+position = Vector2(360, 512)
+
+[node name="Enemy" parent="." unique_id=1113262902 instance=ExtResource("4_2t2xs")]
+position = Vector2(664, 512)
+is_player = false
+boxer_name = "enemy"

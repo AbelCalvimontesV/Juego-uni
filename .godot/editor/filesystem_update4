@@ -1,0 +1,4 @@
+res://Scenes/HitEffect.tscn
+res://scripts/managers/hit_effect.gd
+res://scripts/combat/boxer.gd
+res://assets/chroma_key.gdshader
