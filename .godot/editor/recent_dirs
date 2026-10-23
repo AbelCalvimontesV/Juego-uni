@@ -1,2 +1,22 @@
+res://scripts/combat/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Caminando/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Poder/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Noqueos/Noqueo total/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Golpes basicos/Patada/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Noqueos/Noqueo aereo/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Golpes basicos/Golpe aereo/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Salto/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Golpes basicos/Golpe normal/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Idle/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Golpes basicos/Upper/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Camino agachado/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Noqueos/Noqueo agachado/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Golpes basicos/Golpe bajo/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Golperecibido/Aereo/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Golperecibido/Normal/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Golperecibido/Agachado/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Bloqueos/Bloqueo aereo/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Bloqueos/Bloqueo agachado/
+res://assets/Sprites-chichomedina/Sprites-chichomedina/Bloqueos/Bloqueo parado/
 res://assets/
 res://scripts/managers/

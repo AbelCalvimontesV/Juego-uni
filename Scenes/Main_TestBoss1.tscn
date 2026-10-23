@@ -13,8 +13,10 @@ position = Vector2(512, 512)
 
 [node name="Boxer" parent="." unique_id=401407544 instance=ExtResource("3_yfsih")]
 position = Vector2(360, 512)
+scale = Vector2(2, 2)
 
 [node name="Enemy" parent="." unique_id=1113262902 instance=ExtResource("4_2t2xs")]
 position = Vector2(664, 512)
+scale = Vector2(2, 2)
 is_player = false
 boxer_name = "enemy"

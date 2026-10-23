@@ -1,389 +1,157 @@
-extends Node2D
 
-const CAMERA_ZOOM := 1.5
-const CAMERA_FOLLOW_SPEED := 5.0
+extends Node
+
+const CAMERA_ZOOM := 0.8
 const SAVE_PATH := "user://boxing_progress.json"
+const BOXER_SCENE := "res://Scenes/enemies/ChichoMedina.tscn"
 
-# The original campaign order and fighter scenes are preserved.
-const CAMPAIGN_SCENES: Array[String] = [
-	"res://Scenes/enemies/BasicEnemy.tscn",
-	"res://Scenes/enemies/Boss1.tscn",
-	"res://Scenes/enemies/BasicEnemy.tscn",
-	"res://Scenes/enemies/Boss2.tscn"
-]
+const ROUNDS_TO_WIN := 2
+const TOTAL_ROUNDS := 3
+const ROUND_DURATION := 60.0
+const KO_DISPLAY_DURATION := 1.5
+const BREAK_DURATION := 3.0
 
-const CAMPAIGN_NAMES: Array[String] = [
-	"RIVAL",
-	"VINCHITA",
-	"RIVAL REMATCH",
-	"CHICHO MEDINA"
-]
-
-const RED_COLOR := Color("#ff4657")
 const GOLD_COLOR := Color("#f4cf72")
+const RED_COLOR := Color("#ff4657")
 const TEXT_COLOR := Color("#f4f5f7")
 const MUTED_COLOR := Color("#aab0bf")
-const PANEL_COLOR := Color("#141821")
-const BORDER_COLOR := Color("#454b5c")
+const PANEL_COLOR := Color("#171b25")
+const HEALTH_COLOR := Color("#f04d5d")
+const STAMINA_COLOR := Color("#328bff")
 
-var campaign_index := 0
-var campaign_transition := false
-var campaign_mode := true
+@onready var ring: Node2D = get_node_or_null("Ring")
 
-var ring: Node2D
+var progress: Dictionary = {
+	"wins": 0,
+	"losses": 0
+}
+
 var camera: Camera2D
-var player: Boxer
-var enemy: Boxer
+var player: BoxerBase
+var enemy: BoxerBase
 
-var player_start_position: Vector2
-var enemy_start_position: Vector2
-
-var round_number := 1
-var total_rounds := 3
-var rounds_to_win := 2
-var player_rounds_won := 0
-var enemy_rounds_won := 0
-
-var round_duration := 60.0
-var time_left := 60.0
-var between_rounds := false
-var break_time := 0.0
-var fight_over := false
+var fight_ui: CanvasLayer
+var hud: Control
+var menu_overlay: Control
 
 var player_health_bar: ProgressBar
 var player_stamina_bar: ProgressBar
 var enemy_health_bar: ProgressBar
 var enemy_stamina_bar: ProgressBar
 
-var info_label: Label
+var player_health_value: Label
+var player_stamina_value: Label
+var enemy_health_value: Label
+var enemy_stamina_value: Label
+
+var player_title_label: Label
+var enemy_title_label: Label
+var round_label: Label
+var timer_label: Label
 var score_label: Label
 var result_label: Label
-var restart_button: Button
-var enemy_title_label: Label
-var save_button: Button
 
-var menu_overlay: Control
-var opponent_option: OptionButton
+var save_button: Button
 var continue_button: Button
 var saved_progress: Dictionary = {}
+
+var round_timer: float = ROUND_DURATION
+var break_timer: float = 0.0
+var current_round: int = 1
+var player_round_wins: int = 0
+var enemy_round_wins: int = 0
+
+var fight_started := false
+var fight_finished := false
+var waiting_next_round := false
 var announcement_id := 0
-var save_feedback_id := 0
-var _last_timer_tick := -1
 
 
 func _ready() -> void:
-	_setup_input()
-
-	ring = get_node_or_null("Ring") as Node2D
-	player = get_node_or_null("Boxer") as Boxer
-	enemy = get_node_or_null("Enemy") as Boxer
+	process_mode = Node.PROCESS_MODE_PAUSABLE
+	load_progress()
 
 	if ring == null:
-		push_error("FightManager: Ring node was not found inside Main.")
-		return
-	if player == null:
-		push_error("FightManager: Boxer node is missing or has no Boxer script.")
-		return
-	if enemy == null:
-		push_error("FightManager: Enemy node is missing or has no Boxer script.")
-		return
-	if CAMPAIGN_SCENES.is_empty():
-		push_error("FightManager: the campaign contains no fights.")
+		push_error("Main: Ring node is missing.")
 		return
 
-	ring.z_index = -100
-	player_start_position = player.position
-	enemy_start_position = enemy.position
-
-	_setup_fighters()
-	_create_camera()
-	_make_ui()
-	_update_camera_position(0.0)
-	_update_ui()
-
-	saved_progress = _load_progress()
-	_build_main_menu()
-	get_tree().paused = true
+	_setup_camera()
+	_setup_ui()
+	show_main_menu()
 
 
 func _process(delta: float) -> void:
-	_update_camera_position(delta)
-
-	if fight_over:
+	if fight_finished:
 		return
 
-	if between_rounds:
-		break_time -= delta
-		if is_instance_valid(info_label):
-			if campaign_transition:
-				info_label.text = "NEXT FIGHT  %02d" % ceili(maxf(0.0, break_time))
-			else:
-				info_label.text = "BREAK  %02d" % ceili(maxf(0.0, break_time))
+	if waiting_next_round:
+		break_timer = maxf(0.0, break_timer - delta)
 
-		if break_time <= 0.0:
-			if campaign_transition:
-				_start_next_fight()
-			else:
-				_start_next_round()
+		if break_timer > 0.0:
+			if is_instance_valid(timer_label):
+				timer_label.text = "BREAK  %02d" % ceili(break_timer)
+		else:
+			_start_next_round()
+
 		return
 
-	time_left -= delta
-	var timer_seconds := ceili(maxf(0.0, time_left))
-	if timer_seconds > 0 and timer_seconds <= 10 and timer_seconds != _last_timer_tick:
-		SoundManager.play_sfx("timer_tick", -13.0, 0.0)
-		_last_timer_tick = timer_seconds
+	if not fight_started:
+		return
 
-	if time_left <= 0.0:
-		time_left = 0.0
-		_finish_round_by_time()
+	round_timer = maxf(0.0, round_timer - delta)
+	_update_timer_label()
 
-	_update_ui()
+	if round_timer <= 0.0:
+		_end_round_by_time()
 
 
-# -------------------------------------------------------------------
+# --------------------------------------------------
 # CAMERA
-# -------------------------------------------------------------------
+# --------------------------------------------------
 
-func _create_camera() -> void:
-	var existing_camera := get_node_or_null("FightCamera")
-	if existing_camera != null:
-		existing_camera.queue_free()
+func _setup_camera() -> void:
+	var old_camera := get_node_or_null("FightCamera")
+
+	if old_camera != null:
+		remove_child(old_camera)
+		old_camera.queue_free()
 
 	camera = Camera2D.new()
 	camera.name = "FightCamera"
-	add_child(camera)
-	camera.enabled = true
 	camera.zoom = Vector2(CAMERA_ZOOM, CAMERA_ZOOM)
 	camera.position_smoothing_enabled = false
-	camera.anchor_mode = Camera2D.ANCHOR_MODE_DRAG_CENTER
-	camera.global_position = (player.global_position + enemy.global_position) / 2.0
+	add_child(camera)
+
+	var background := ring.get_node_or_null("Background") as Sprite2D
+
+	if background == null:
+		background = ring.get_node_or_null("backround") as Sprite2D
+
+	if background != null and background.texture != null:
+		camera.global_position = background.to_global(
+			background.get_rect().get_center()
+		)
+	else:
+		camera.global_position = ring.global_position
+
 	camera.make_current()
 
 
-func _update_camera_position(delta: float) -> void:
-	if not is_instance_valid(camera):
-		return
-	if not is_instance_valid(player) or not is_instance_valid(enemy):
-		return
-	if not camera.is_inside_tree():
-		return
-
-	var midpoint: Vector2 = (player.global_position + enemy.global_position) / 2.0
-	if delta <= 0.0:
-		camera.global_position = midpoint
-	else:
-		var weight := 1.0 - exp(-CAMERA_FOLLOW_SPEED * delta)
-		camera.global_position = camera.global_position.lerp(midpoint, weight)
-
-
-# -------------------------------------------------------------------
-# INPUT
-# -------------------------------------------------------------------
-
-func _setup_input() -> void:
-	_add_key_action("move_left", KEY_A)
-	_add_key_action("move_right", KEY_D)
-	_add_key_action("move_up", KEY_W)
-	_add_key_action("move_down", KEY_S)
-	_add_key_action("dash", KEY_SPACE)
-	_add_key_action("jab", KEY_J)
-	_add_key_action("cross", KEY_K)
-	_add_key_action("upper", KEY_L)
-	_add_key_action("block", KEY_I)
-
-
-func _add_key_action(action_name: String, keycode: Key) -> void:
-	if not InputMap.has_action(action_name):
-		InputMap.add_action(action_name)
-
-	for existing_event in InputMap.action_get_events(action_name):
-		if existing_event is InputEventKey and existing_event.physical_keycode == keycode:
-			return
-
-	var event := InputEventKey.new()
-	event.physical_keycode = keycode
-	InputMap.action_add_event(action_name, event)
-
-
-# -------------------------------------------------------------------
-# IN-GAME HUD
-# -------------------------------------------------------------------
-
-func _make_ui() -> void:
-	var layer := CanvasLayer.new()
-	layer.name = "FightUI"
-	layer.layer = 5
-	add_child(layer)
-
-	var hud := Control.new()
-	hud.name = "HUD"
-	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(hud)
-
-	var player_title := _make_label(
-		hud, "PLAYER", Vector2(28, 10), Vector2(300, 22), 15, GOLD_COLOR
-	)
-	player_title.add_theme_font_size_override("font_size", 15)
-
-	_make_label(hud, "HEALTH", Vector2(29, 32), Vector2(90, 12), 9, MUTED_COLOR)
-	player_health_bar = _bar(hud, Vector2(28, 44), 300, Color("#f04d5d"), 17)
-	_make_label(hud, "STAMINA", Vector2(29, 64), Vector2(90, 12), 9, MUTED_COLOR)
-	player_stamina_bar = _bar(hud, Vector2(28, 76), 300, Color("#54d6b0"), 13)
-
-	enemy_title_label = _make_label(
-		hud, CAMPAIGN_NAMES[campaign_index], Vector2(632, 10), Vector2(300, 22), 15, GOLD_COLOR
-	)
-	enemy_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_make_label(hud, "HEALTH", Vector2(842, 32), Vector2(90, 12), 9, MUTED_COLOR).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	enemy_health_bar = _bar(hud, Vector2(632, 44), 300, Color("#f04d5d"), 17)
-	_make_label(hud, "STAMINA", Vector2(842, 64), Vector2(90, 12), 9, MUTED_COLOR).horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	enemy_stamina_bar = _bar(hud, Vector2(632, 76), 300, Color("#54d6b0"), 13)
-
-	var timer_panel := Panel.new()
-	timer_panel.position = Vector2(382, 8)
-	timer_panel.size = Vector2(196, 82)
-	timer_panel.add_theme_stylebox_override(
-		"panel", _panel_style(Color("#171b25"), Color("#b94a52"), 2, 9)
-	)
-	hud.add_child(timer_panel)
-
-	_make_label(
-		hud, "PIXEL BOXING CLUB", Vector2(386, 12), Vector2(188, 15), 10, MUTED_COLOR
-	).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	info_label = _make_label(
-		hud, "R1  •  01:00", Vector2(386, 28), Vector2(188, 29), 19, GOLD_COLOR
-	)
-	info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	score_label = _make_label(
-		hud, "ROUNDS  0 - 0", Vector2(386, 59), Vector2(188, 20), 11, TEXT_COLOR
-	)
-	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-
-	save_button = Button.new()
-	save_button.text = "SAVE PROGRESS"
-	save_button.position = Vector2(793, 100)
-	save_button.size = Vector2(139, 29)
-	save_button.add_theme_font_size_override("font_size", 11)
-	_style_button(save_button, Color("#252c38"), Color("#5c6579"))
-	save_button.pressed.connect(_save_progress.bind(true))
-	hud.add_child(save_button)
-
-	result_label = _make_label(
-		hud, "", Vector2(190, 190), Vector2(580, 112), 30, RED_COLOR
-	)
-	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	result_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	result_label.add_theme_color_override("font_shadow_color", Color("#08090d"))
-	result_label.add_theme_constant_override("shadow_offset_x", 2)
-	result_label.add_theme_constant_override("shadow_offset_y", 2)
-
-	restart_button = Button.new()
-	restart_button.text = "MAIN MENU"
-	restart_button.position = Vector2(390, 318)
-	restart_button.size = Vector2(180, 40)
-	restart_button.visible = false
-	restart_button.add_theme_font_size_override("font_size", 14)
-	_style_button(restart_button, Color("#a83240"), Color("#f06b76"))
-	restart_button.pressed.connect(_show_main_menu)
-	hud.add_child(restart_button)
-
-	var controls_panel := PanelContainer.new()
-	controls_panel.position = Vector2(24, 472)
-	controls_panel.size = Vector2(912, 54)
-	controls_panel.add_theme_stylebox_override(
-		"panel", _panel_style(Color("#121620"), Color("#454b5c"), 1, 7)
-	)
-	hud.add_child(controls_panel)
-
-	var controls_margin := MarginContainer.new()
-	controls_margin.add_theme_constant_override("margin_left", 7)
-	controls_margin.add_theme_constant_override("margin_right", 7)
-	controls_margin.add_theme_constant_override("margin_top", 5)
-	controls_margin.add_theme_constant_override("margin_bottom", 5)
-	controls_panel.add_child(controls_margin)
-
-	var controls_row := HBoxContainer.new()
-	controls_row.add_theme_constant_override("separation", 7)
-	controls_margin.add_child(controls_row)
-	_make_control_chip(controls_row, "A / D  MOVE")
-	_make_control_chip(controls_row, "W / S  VERTICAL")
-	_make_control_chip(controls_row, "SPACE  DASH")
-	_make_control_chip(controls_row, "J  JAB")
-	_make_control_chip(controls_row, "K  CROSS")
-	_make_control_chip(controls_row, "L  UPPERCUT")
-	_make_control_chip(controls_row, "I  BLOCK")
-
-
-func _make_label(
-	parent: Control,
-	text_value: String,
-	position_value: Vector2,
-	size_value: Vector2,
-	font_size: int,
-	font_color: Color
-) -> Label:
-	var label := Label.new()
-	label.text = text_value
-	label.position = position_value
-	label.size = size_value
-	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_color_override("font_color", font_color)
-	parent.add_child(label)
-	return label
-
-
-func _bar(
-	parent: Control,
-	pos: Vector2,
-	bar_width: float,
-	color: Color,
-	bar_height: float
-) -> ProgressBar:
-	var bar := ProgressBar.new()
-	bar.position = pos
-	bar.size = Vector2(bar_width, bar_height)
-	bar.min_value = 0.0
-	bar.max_value = 100.0
-	bar.value = 100.0
-	bar.show_percentage = true
-	bar.add_theme_font_size_override("font_size", 10)
-	bar.add_theme_color_override("font_color", Color("#ffffff"))
-	bar.add_theme_stylebox_override("fill", _panel_style(color, color.lightened(0.12), 1, 5))
-	bar.add_theme_stylebox_override("background", _panel_style(Color("#282d38"), Color("#555c6b"), 1, 5))
-	parent.add_child(bar)
-	return bar
-
-
-func _make_control_chip(parent: HBoxContainer, caption: String) -> void:
-	var chip := PanelContainer.new()
-	chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	chip.custom_minimum_size = Vector2(0, 32)
-	chip.add_theme_stylebox_override(
-		"panel", _panel_style(Color("#242a36"), Color("#555d70"), 1, 5)
-	)
-	parent.add_child(chip)
-
-	var label := Label.new()
-	label.text = caption
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 10)
-	label.add_theme_color_override("font_color", TEXT_COLOR)
-	chip.add_child(label)
-
+# --------------------------------------------------
+# UI HELPERS
+# --------------------------------------------------
 
 func _panel_style(
-	background_color: Color,
-	border_color: Color,
+	background: Color,
+	border: Color,
 	border_width: int = 1,
-	corner_radius: int = 6
+	radius: int = 6
 ) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
-	style.bg_color = background_color
-	style.border_color = border_color
+	style.bg_color = background
+	style.border_color = border
 	style.set_border_width_all(border_width)
-	style.set_corner_radius_all(corner_radius)
+	style.set_corner_radius_all(radius)
 	style.content_margin_left = 7.0
 	style.content_margin_right = 7.0
 	style.content_margin_top = 4.0
@@ -391,575 +159,914 @@ func _panel_style(
 	return style
 
 
-func _style_button(button: Button, background: Color, border: Color) -> void:
-	button.add_theme_stylebox_override("normal", _panel_style(background, border, 1, 6))
-	button.add_theme_stylebox_override("hover", _panel_style(background.lightened(0.12), border.lightened(0.12), 1, 6))
-	button.add_theme_stylebox_override("pressed", _panel_style(background.darkened(0.12), border, 1, 6))
-	button.add_theme_stylebox_override("disabled", _panel_style(Color("#222630"), Color("#363b48"), 1, 6))
+func _make_label(
+	parent: Control,
+	label_name: String,
+	text_value: String,
+	pos: Vector2,
+	label_size: Vector2,
+	font_size: int,
+	color: Color
+) -> Label:
+	var label := Label.new()
+	label.name = label_name
+	label.text = text_value
+	label.position = pos
+	label.size = label_size
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
+	parent.add_child(label)
+	return label
+
+
+func _style_button(
+	button: Button,
+	background: Color,
+	border: Color
+) -> void:
+	button.add_theme_stylebox_override(
+		"normal", _panel_style(background, border)
+	)
+	button.add_theme_stylebox_override(
+		"hover",
+		_panel_style(background.lightened(0.12), border.lightened(0.12))
+	)
+	button.add_theme_stylebox_override(
+		"pressed", _panel_style(background.darkened(0.12), border)
+	)
+	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	button.add_theme_color_override("font_color", TEXT_COLOR)
-	button.add_theme_color_override("font_hover_color", Color("#ffffff"))
-	button.add_theme_color_override("font_pressed_color", GOLD_COLOR)
-	button.add_theme_color_override("font_disabled_color", MUTED_COLOR)
-	button.pressed.connect(_play_ui_click)
-	button.mouse_entered.connect(_play_ui_hover)
+	button.add_theme_font_size_override("font_size", 13)
 
 
-func _play_ui_click() -> void:
-	SoundManager.play_sfx("ui_click", -5.0, 0.025)
+func _create_bar(
+	parent: Control,
+	bar_name: String,
+	pos: Vector2,
+	width: float,
+	color: Color,
+	height: float
+) -> ProgressBar:
+	var bar := ProgressBar.new()
+	bar.name = bar_name
+	bar.position = pos
+	bar.size = Vector2(width, height)
+	bar.min_value = 0
+	bar.max_value = 100
+	bar.value = 100
+	bar.show_percentage = false
+
+	bar.add_theme_stylebox_override(
+		"background",
+		_panel_style(Color("#282d38"), Color("#555c6b"), 1, 5)
+	)
+	bar.add_theme_stylebox_override(
+		"fill",
+		_panel_style(color, color.lightened(0.12), 1, 5)
+	)
+
+	parent.add_child(bar)
+	return bar
 
 
-func _play_ui_hover() -> void:
-	SoundManager.play_sfx("ui_hover", -12.0, 0.01)
+func _clear_ui() -> void:
+	if not is_instance_valid(fight_ui):
+		return
+
+	for child in fight_ui.get_children():
+		fight_ui.remove_child(child)
+		child.queue_free()
+
+	hud = null
+	menu_overlay = null
+
+	player_health_bar = null
+	player_stamina_bar = null
+	enemy_health_bar = null
+	enemy_stamina_bar = null
+
+	player_health_value = null
+	player_stamina_value = null
+	enemy_health_value = null
+	enemy_stamina_value = null
+
+	player_title_label = null
+	enemy_title_label = null
+	round_label = null
+	timer_label = null
+	score_label = null
+	result_label = null
+
+	save_button = null
+	continue_button = null
 
 
-func _on_opponent_selected(_index: int) -> void:
-	SoundManager.play_sfx("ui_click", -6.0, 0.02)
+func _setup_ui() -> void:
+	if is_instance_valid(fight_ui):
+		fight_ui.queue_free()
+
+	fight_ui = CanvasLayer.new()
+	fight_ui.name = "FightUI"
+	fight_ui.layer = 5
+	add_child(fight_ui)
 
 
-# -------------------------------------------------------------------
+# --------------------------------------------------
 # MAIN MENU
-# -------------------------------------------------------------------
+# --------------------------------------------------
 
-func _build_main_menu() -> void:
-	var menu_layer := CanvasLayer.new()
-	menu_layer.name = "MainMenuLayer"
-	menu_layer.layer = 20
-	menu_layer.process_mode = Node.PROCESS_MODE_ALWAYS
-	add_child(menu_layer)
+func show_main_menu() -> void:
+	fight_started = false
+	fight_finished = false
+	waiting_next_round = false
+	break_timer = 0.0
+	announcement_id += 1
 
-	menu_overlay = Control.new()
-	menu_overlay.name = "MainMenuOverlay"
-	menu_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	menu_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
-	menu_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	menu_layer.add_child(menu_overlay)
+	_clear_ui()
 
 	var background := ColorRect.new()
-	background.color = Color(0.035, 0.045, 0.065, 0.96)
+	background.name = "MenuBackground"
+	background.color = Color(0.035, 0.045, 0.065, 0.97)
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	menu_overlay.add_child(background)
+	fight_ui.add_child(background)
 
-	var decorative_line := ColorRect.new()
-	decorative_line.color = Color("#a83240")
-	decorative_line.position = Vector2(0, 0)
-	decorative_line.size = Vector2(960, 5)
-	menu_overlay.add_child(decorative_line)
+	var top_line := ColorRect.new()
+	top_line.color = Color("#a83240")
+	top_line.size = Vector2(960, 5)
+	background.add_child(top_line)
 
-	var menu_panel := PanelContainer.new()
-	menu_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	menu_panel.offset_left = -270
-	menu_panel.offset_right = 270
-	menu_panel.offset_top = -226
-	menu_panel.offset_bottom = 226
-	menu_panel.add_theme_stylebox_override(
-		"panel", _panel_style(Color("#171b25"), Color("#a83b48"), 2, 10)
+	menu_overlay = Control.new()
+	menu_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fight_ui.add_child(menu_overlay)
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	panel.offset_left = -260
+	panel.offset_right = 260
+	panel.offset_top = -200
+	panel.offset_bottom = 200
+	panel.add_theme_stylebox_override(
+		"panel", _panel_style(PANEL_COLOR, Color("#a83b48"), 2, 10)
 	)
-	menu_overlay.add_child(menu_panel)
-
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_top", 17)
-	margin.add_theme_constant_override("margin_bottom", 17)
-	menu_panel.add_child(margin)
+	menu_overlay.add_child(panel)
 
 	var layout := VBoxContainer.new()
-	layout.add_theme_constant_override("separation", 8)
-	margin.add_child(layout)
+	layout.add_theme_constant_override("separation", 13)
+	panel.add_child(layout)
 
-	var title := Label.new()
-	title.text = "PIXEL BOXING CLUB"
-	title.custom_minimum_size = Vector2(0, 42)
+	var title := _make_label(
+		layout, "TitleLabel", "PIXEL BOXING CLUB",
+		Vector2.ZERO, Vector2(480, 48), 28, GOLD_COLOR
+	)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 30)
-	title.add_theme_color_override("font_color", GOLD_COLOR)
-	title.add_theme_color_override("font_outline_color", Color("#612530"))
-	title.add_theme_constant_override("outline_size", 2)
-	layout.add_child(title)
 
-	var subtitle := Label.new()
-	subtitle.text = "Step into the ring. Choose your next challenge."
+	var subtitle := _make_label(
+		layout, "SubtitleLabel", "CHICHO MEDINA  •  LOCAL FIGHT",
+		Vector2.ZERO, Vector2(480, 25), 12, MUTED_COLOR
+	)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.add_theme_font_size_override("font_size", 13)
-	subtitle.add_theme_color_override("font_color", MUTED_COLOR)
-	layout.add_child(subtitle)
-
-	var separator := HSeparator.new()
-	layout.add_child(separator)
-
-	var choose_label := Label.new()
-	choose_label.text = "CHOOSE YOUR FIGHT"
-	choose_label.add_theme_font_size_override("font_size", 12)
-	choose_label.add_theme_color_override("font_color", GOLD_COLOR)
-	layout.add_child(choose_label)
-
-	opponent_option = OptionButton.new()
-	opponent_option.custom_minimum_size = Vector2(0, 39)
-	opponent_option.add_item("Campaign  —  all four fights", 0)
-	opponent_option.add_item("Rival  —  exhibition fight", 1)
-	opponent_option.add_item("Vinchita  —  healing boss", 2)
-	opponent_option.add_item("Chicho Medina  —  final boss", 3)
-	opponent_option.select(0)
-	opponent_option.item_selected.connect(_on_opponent_selected)
-	opponent_option.add_theme_font_size_override("font_size", 14)
-	opponent_option.add_theme_color_override("font_color", TEXT_COLOR)
-	opponent_option.add_theme_stylebox_override("normal", _panel_style(Color("#222734"), Color("#555d70"), 1, 6))
-	layout.add_child(opponent_option)
 
 	var start_button := Button.new()
+	start_button.name = "StartButton"
 	start_button.text = "START FIGHT"
-	start_button.custom_minimum_size = Vector2(0, 41)
-	start_button.add_theme_font_size_override("font_size", 15)
+	start_button.custom_minimum_size = Vector2(0, 42)
 	_style_button(start_button, Color("#a83240"), Color("#f06b76"))
-	start_button.pressed.connect(_start_selected_challenge)
+	start_button.pressed.connect(start_fight)
 	layout.add_child(start_button)
 
 	continue_button = Button.new()
 	continue_button.text = "CONTINUE SAVED PROGRESS"
 	continue_button.custom_minimum_size = Vector2(0, 38)
-	continue_button.add_theme_font_size_override("font_size", 13)
 	_style_button(continue_button, Color("#283b42"), Color("#4b9d92"))
 	continue_button.pressed.connect(_resume_saved_progress)
 	layout.add_child(continue_button)
 
-	var controls_title := Label.new()
-	controls_title.text = "CONTROLS"
-	controls_title.add_theme_font_size_override("font_size", 11)
-	controls_title.add_theme_color_override("font_color", GOLD_COLOR)
-	layout.add_child(controls_title)
+	var progress_button := Button.new()
+	progress_button.text = "VIEW CAREER RECORD"
+	progress_button.custom_minimum_size = Vector2(0, 38)
+	_style_button(progress_button, Color("#252c38"), Color("#5c6579"))
+	progress_button.pressed.connect(show_progress)
+	layout.add_child(progress_button)
 
-	var controls_copy := Label.new()
-	controls_copy.text = "A / D Move     W / S Vertical     SPACE Dash\nJ Jab     K Cross     L Uppercut     I Block"
-	controls_copy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	controls_copy.add_theme_font_size_override("font_size", 12)
-	controls_copy.add_theme_color_override("font_color", TEXT_COLOR)
-	controls_copy.add_theme_color_override("font_shadow_color", Color("#07080b"))
-	layout.add_child(controls_copy)
+	var exit_button := Button.new()
+	exit_button.text = "EXIT"
+	exit_button.custom_minimum_size = Vector2(0, 35)
+	_style_button(exit_button, Color("#252c38"), Color("#5c6579"))
+	exit_button.pressed.connect(_exit_game)
+	layout.add_child(exit_button)
 
-	var footer := Label.new()
-	footer.text = "Your progress is saved on this computer."
-	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	footer.add_theme_font_size_override("font_size", 10)
-	footer.add_theme_color_override("font_color", MUTED_COLOR)
-	layout.add_child(footer)
-
-	_refresh_continue_button()
-	menu_overlay.visible = true
+	continue_button.disabled = saved_progress.is_empty()
 
 
-func _show_main_menu() -> void:
-	SoundManager.set_crowd_enabled(false)
-	if is_instance_valid(menu_overlay):
-		menu_overlay.visible = true
-	if is_instance_valid(restart_button):
-		restart_button.visible = false
-	saved_progress = _load_progress()
-	_refresh_continue_button()
-	get_tree().paused = true
+# --------------------------------------------------
+# FIGHT HUD
+# --------------------------------------------------
 
+func _setup_fight_ui() -> void:
+	_clear_ui()
 
-func _refresh_continue_button() -> void:
-	if is_instance_valid(continue_button):
-		continue_button.disabled = saved_progress.is_empty()
+	hud = Control.new()
+	hud.name = "HUD"
+	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fight_ui.add_child(hud)
 
-
-func _start_selected_challenge() -> void:
-	var selected := opponent_option.selected
-	campaign_mode = selected == 0
-	match selected:
-		0:
-			campaign_index = 0
-		1:
-			campaign_index = 0
-		2:
-			campaign_index = 1
-		3:
-			campaign_index = 3
-		_:
-			campaign_index = 0
-
-	if not _replace_enemy(CAMPAIGN_SCENES[campaign_index]):
-		return
-
-	round_number = 1
-	player_rounds_won = 0
-	enemy_rounds_won = 0
-	time_left = round_duration
-	between_rounds = false
-	campaign_transition = false
-	break_time = 0.0
-	fight_over = false
-	player.reset_for_round()
-	enemy.reset_for_round()
-	player.position = player_start_position
-	enemy.position = enemy_start_position
-	result_label.text = ""
-	restart_button.visible = false
-	menu_overlay.visible = false
-	get_tree().paused = false
-	SoundManager.set_crowd_enabled(true)
-	SoundManager.play_sfx("round_bell", -1.0, 0.0)
-	_last_timer_tick = -1
-	_update_camera_position(0.0)
-	_update_ui()
-	_show_announcement("FIGHT %d\n%s" % [campaign_index + 1, CAMPAIGN_NAMES[campaign_index]], 1.8)
-	_save_progress(false)
-
-
-func _resume_saved_progress() -> void:
-	saved_progress = _load_progress()
-	if saved_progress.is_empty():
-		_refresh_continue_button()
-		return
-
-	campaign_mode = bool(saved_progress.get("campaign_mode", true))
-	campaign_index = clampi(
-		int(saved_progress.get("campaign_index", 0)), 0, CAMPAIGN_SCENES.size() - 1
+	player_title_label = _make_label(
+		hud, "PlayerLabel", "PLAYER",
+		Vector2(28, 10), Vector2(300, 22), 15, GOLD_COLOR
 	)
-	if not _replace_enemy(CAMPAIGN_SCENES[campaign_index]):
-		return
 
-	round_number = clampi(int(saved_progress.get("round_number", 1)), 1, total_rounds)
-	player_rounds_won = clampi(int(saved_progress.get("player_rounds_won", 0)), 0, rounds_to_win - 1)
-	enemy_rounds_won = clampi(int(saved_progress.get("enemy_rounds_won", 0)), 0, rounds_to_win - 1)
-	time_left = clampf(float(saved_progress.get("time_left", round_duration)), 0.1, round_duration)
+	_make_label(
+		hud, "PlayerHealthCaption", "HEALTH",
+		Vector2(29, 32), Vector2(90, 12), 9, MUTED_COLOR
+	)
 
-	player.reset_for_round()
-	enemy.reset_for_round()
-	player.health = clampf(float(saved_progress.get("player_health", player.max_health)), 0.1, player.max_health)
-	player.stamina = clampf(float(saved_progress.get("player_stamina", player.max_stamina)), 0.0, player.max_stamina)
-	enemy.health = clampf(float(saved_progress.get("enemy_health", enemy.max_health)), 0.1, enemy.max_health)
-	enemy.stamina = clampf(float(saved_progress.get("enemy_stamina", enemy.max_stamina)), 0.0, enemy.max_stamina)
-	player.position = player_start_position
-	enemy.position = enemy_start_position
-	between_rounds = false
-	campaign_transition = false
-	break_time = 0.0
-	fight_over = false
-	result_label.text = ""
-	restart_button.visible = false
-	menu_overlay.visible = false
-	get_tree().paused = false
-	SoundManager.set_crowd_enabled(true)
-	SoundManager.play_sfx("round_bell", -1.0, 0.0)
-	_last_timer_tick = -1
-	_update_camera_position(0.0)
-	_update_ui()
-	_show_announcement("PROGRESS RESTORED", 1.5)
+	player_health_bar = _create_bar(
+		hud, "PlayerHealthBar",
+		Vector2(28, 44), 300, HEALTH_COLOR, 17
+	)
+
+	player_health_value = _make_label(
+		hud, "PlayerHealthValue", "100 / 100",
+		Vector2(250, 32), Vector2(78, 12), 9, TEXT_COLOR
+	)
+	player_health_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	_make_label(
+		hud, "PlayerStaminaCaption", "STAMINA",
+		Vector2(29, 64), Vector2(90, 12), 9, MUTED_COLOR
+	)
+
+	player_stamina_bar = _create_bar(
+		hud, "PlayerStaminaBar",
+		Vector2(28, 76), 300, STAMINA_COLOR, 13
+	)
+
+	player_stamina_value = _make_label(
+		hud, "PlayerStaminaValue", "100 / 100",
+		Vector2(250, 64), Vector2(78, 12), 9, TEXT_COLOR
+	)
+	player_stamina_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	enemy_title_label = _make_label(
+		hud, "EnemyLabel", "OPPONENT",
+		Vector2(632, 10), Vector2(300, 22), 15, GOLD_COLOR
+	)
+	enemy_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	var enemy_health_caption := _make_label(
+		hud, "EnemyHealthCaption", "HEALTH",
+		Vector2(842, 32), Vector2(90, 12), 9, MUTED_COLOR
+	)
+	enemy_health_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	enemy_health_bar = _create_bar(
+		hud, "EnemyHealthBar",
+		Vector2(632, 44), 300, HEALTH_COLOR, 17
+	)
+
+	enemy_health_value = _make_label(
+		hud, "EnemyHealthValue", "100 / 100",
+		Vector2(632, 32), Vector2(78, 12), 9, TEXT_COLOR
+	)
+
+	var enemy_stamina_caption := _make_label(
+		hud, "EnemyStaminaCaption", "STAMINA",
+		Vector2(842, 64), Vector2(90, 12), 9, MUTED_COLOR
+	)
+	enemy_stamina_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	enemy_stamina_bar = _create_bar(
+		hud, "EnemyStaminaBar",
+		Vector2(632, 76), 300, STAMINA_COLOR, 13
+	)
+
+	enemy_stamina_value = _make_label(
+		hud, "EnemyStaminaValue", "100 / 100",
+		Vector2(632, 64), Vector2(78, 12), 9, TEXT_COLOR
+	)
+
+	var timer_panel := Panel.new()
+	timer_panel.position = Vector2(382, 8)
+	timer_panel.size = Vector2(196, 82)
+	timer_panel.add_theme_stylebox_override(
+		"panel", _panel_style(PANEL_COLOR, Color("#b94a52"), 2, 9)
+	)
+	hud.add_child(timer_panel)
+
+	var brand := _make_label(
+		hud, "BrandLabel", "PIXEL BOXING CLUB",
+		Vector2(386, 12), Vector2(188, 15), 10, MUTED_COLOR
+	)
+	brand.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	round_label = _make_label(
+		hud, "RoundLabel", "ROUND 1",
+		Vector2(386, 28), Vector2(188, 25), 18, GOLD_COLOR
+	)
+	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	timer_label = _make_label(
+		hud, "TimerLabel", "01:00",
+		Vector2(386, 52), Vector2(188, 23), 15, TEXT_COLOR
+	)
+	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	score_label = _make_label(
+		hud, "ScoreLabel", "ROUNDS  0 - 0",
+		Vector2(386, 94), Vector2(188, 20), 11, TEXT_COLOR
+	)
+	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	save_button = Button.new()
+	save_button.text = "SAVE PROGRESS"
+	save_button.position = Vector2(793, 119)
+	save_button.size = Vector2(139, 29)
+	save_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	_style_button(save_button, Color("#252c38"), Color("#5c6579"))
+	save_button.pressed.connect(save_progress)
+	hud.add_child(save_button)
+
+	result_label = _make_label(
+		hud, "ResultLabel", "",
+		Vector2(150, 180), Vector2(660, 120), 28, RED_COLOR
+	)
+	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+
+	_make_controls_panel()
+	_update_stats_ui()
+	_update_round_label()
+	_update_timer_label()
 
 
-func _replace_enemy(scene_path: String) -> bool:
-	if is_instance_valid(enemy):
-		if enemy.knocked_out.is_connected(_on_knockout):
-			enemy.knocked_out.disconnect(_on_knockout)
-		if enemy.stats_changed.is_connected(_on_stats_changed):
-			enemy.stats_changed.disconnect(_on_stats_changed)
-		if is_instance_valid(player) and player.opponent == enemy:
-			player.opponent = null
-		remove_child(enemy)
-		enemy.queue_free()
+func _make_controls_panel() -> void:
+	var controls_panel := PanelContainer.new()
+	controls_panel.position = Vector2(24, 472)
+	controls_panel.size = Vector2(912, 54)
+	controls_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	controls_panel.add_theme_stylebox_override(
+		"panel", _panel_style(Color("#121620"), Color("#454b5c"), 1, 7)
+	)
+	hud.add_child(controls_panel)
 
-	var packed_scene := load(scene_path) as PackedScene
-	if packed_scene == null:
-		push_error("FightManager: could not load opponent scene: " + scene_path)
-		return false
+	var controls_row := HBoxContainer.new()
+	controls_row.add_theme_constant_override("separation", 7)
+	controls_panel.add_child(controls_row)
 
-	var new_enemy := packed_scene.instantiate() as Boxer
-	if new_enemy == null:
-		push_error("FightManager: the opponent scene root does not use the Boxer script.")
-		return false
+	for caption in [
+		"A / D  MOVE", "W  JUMP", "S  CROUCH", "J  JAB",
+		"K  HEAVY", "L  KICK", "U  SPECIAL", "I  BLOCK"
+	]:
+		var chip := PanelContainer.new()
+		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		chip.custom_minimum_size = Vector2(0, 32)
+		chip.add_theme_stylebox_override(
+			"panel", _panel_style(Color("#242a36"), Color("#555d70"), 1, 5)
+		)
+		controls_row.add_child(chip)
 
-	new_enemy.name = "Enemy"
-	add_child(new_enemy)
-	enemy = new_enemy
-	enemy.position = enemy_start_position
-	_setup_fighters()
-	return true
-
-
-# -------------------------------------------------------------------
-# FIGHTERS / HUD UPDATES
-# -------------------------------------------------------------------
-
-func _setup_fighters() -> void:
-	player.is_player = true
-	player.boxer_name = "PLAYER"
-	enemy.is_player = false
-	enemy.boxer_name = CAMPAIGN_NAMES[campaign_index]
-	player.opponent = enemy
-	enemy.opponent = player
-
-	if not player.knocked_out.is_connected(_on_knockout):
-		player.knocked_out.connect(_on_knockout)
-	if not enemy.knocked_out.is_connected(_on_knockout):
-		enemy.knocked_out.connect(_on_knockout)
-	if not player.stats_changed.is_connected(_on_stats_changed):
-		player.stats_changed.connect(_on_stats_changed)
+		var label := Label.new()
+		label.text = caption
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 10)
+		label.add_theme_color_override("font_color", TEXT_COLOR)
+		chip.add_child(label)
 
 
-func _on_stats_changed(_boxer: Boxer) -> void:
-	_update_ui()
-
-
-func _update_ui() -> void:
+func _update_stats_ui() -> void:
 	if not is_instance_valid(player) or not is_instance_valid(enemy):
 		return
 
+	if is_instance_valid(player_title_label):
+		player_title_label.text = player.boxer_name
+	if is_instance_valid(enemy_title_label):
+		enemy_title_label.text = enemy.boxer_name
+
 	if is_instance_valid(player_health_bar):
-		player_health_bar.max_value = player.max_health
+		player_health_bar.max_value = maxf(1.0, player.max_health)
 		player_health_bar.value = player.health
 	if is_instance_valid(player_stamina_bar):
-		player_stamina_bar.max_value = player.max_stamina
+		player_stamina_bar.max_value = maxf(1.0, player.max_stamina)
 		player_stamina_bar.value = player.stamina
 	if is_instance_valid(enemy_health_bar):
-		enemy_health_bar.max_value = enemy.max_health
+		enemy_health_bar.max_value = maxf(1.0, enemy.max_health)
 		enemy_health_bar.value = enemy.health
 	if is_instance_valid(enemy_stamina_bar):
-		enemy_stamina_bar.max_value = enemy.max_stamina
+		enemy_stamina_bar.max_value = maxf(1.0, enemy.max_stamina)
 		enemy_stamina_bar.value = enemy.stamina
 
+	if is_instance_valid(player_health_value):
+		player_health_value.text = "%d / %d" % [
+			roundi(player.health), roundi(player.max_health)
+		]
+	if is_instance_valid(player_stamina_value):
+		player_stamina_value.text = "%d / %d" % [
+			roundi(player.stamina), roundi(player.max_stamina)
+		]
+	if is_instance_valid(enemy_health_value):
+		enemy_health_value.text = "%d / %d" % [
+			roundi(enemy.health), roundi(enemy.max_health)
+		]
+	if is_instance_valid(enemy_stamina_value):
+		enemy_stamina_value.text = "%d / %d" % [
+			roundi(enemy.stamina), roundi(enemy.max_stamina)
+		]
+
 	if is_instance_valid(score_label):
-		score_label.text = "ROUNDS  %d - %d" % [player_rounds_won, enemy_rounds_won]
-	if is_instance_valid(enemy_title_label):
-		enemy_title_label.text = CAMPAIGN_NAMES[campaign_index]
-	if is_instance_valid(info_label) and not fight_over and not between_rounds:
-		var seconds_left := maxi(0, ceili(time_left))
-		info_label.text = "R%d  •  %02d:%02d" % [round_number, int(seconds_left / 60), seconds_left % 60]
-		info_label.add_theme_color_override(
-			"font_color", RED_COLOR if seconds_left <= 10 else GOLD_COLOR
-		)
+		score_label.text = "ROUNDS  %d - %d" % [
+			player_round_wins, enemy_round_wins
+		]
+
 	if is_instance_valid(save_button):
-		save_button.disabled = fight_over or between_rounds
+		save_button.disabled = (
+			not fight_started
+			or waiting_next_round
+			or fight_finished
+		)
 
 
-# -------------------------------------------------------------------
-# ROUND FLOW — THE ORIGINAL COMBAT RULES ARE KEPT
-# -------------------------------------------------------------------
-
-func _on_knockout(boxer: Boxer) -> void:
-	if fight_over or between_rounds:
-		return
-	if boxer == enemy:
-		_complete_round("player")
-	else:
-		_complete_round("enemy")
-
-
-func _finish_round_by_time() -> void:
-	if fight_over or between_rounds:
-		return
-	if player.health > enemy.health:
-		_complete_round("player")
-	elif enemy.health > player.health:
-		_complete_round("enemy")
-	else:
-		_complete_round("draw")
-
-
-func _complete_round(winner: String) -> void:
-	if fight_over or between_rounds:
+func _update_timer_label() -> void:
+	if not is_instance_valid(timer_label):
 		return
 
-	SoundManager.play_sfx("round_end", -1.5, 0.02)
-	if winner == "player":
-		player_rounds_won += 1
-		_show_announcement("PLAYER WINS THE ROUND!", 2.0)
-	elif winner == "enemy":
-		enemy_rounds_won += 1
-		_show_announcement("OPPONENT WINS THE ROUND!", 2.0)
-	else:
-		_show_announcement("ROUND DRAW", 2.0)
-
-	_update_ui()
-	if player_rounds_won >= rounds_to_win:
-		_finish_match("player")
-		return
-	if enemy_rounds_won >= rounds_to_win:
-		_finish_match("enemy")
-		return
-	if round_number >= total_rounds:
-		if player_rounds_won > enemy_rounds_won:
-			_finish_match("player")
-		elif enemy_rounds_won > player_rounds_won:
-			_finish_match("enemy")
-		else:
-			_finish_match("draw")
-		return
-
-	between_rounds = true
-	campaign_transition = false
-	break_time = 3.0
-	info_label.text = "BETWEEN ROUNDS"
+	var seconds := ceili(maxf(0.0, round_timer))
+	timer_label.text = "%02d:%02d" % [
+		int(seconds / 60), seconds % 60
+	]
+	timer_label.add_theme_color_override(
+		"font_color", RED_COLOR if seconds <= 10 else TEXT_COLOR
+	)
 
 
-func _finish_match(winner: String) -> void:
-	between_rounds = false
-	campaign_transition = false
-
-	if winner == "player":
-		if campaign_mode and campaign_index < CAMPAIGN_SCENES.size() - 1:
-			between_rounds = true
-			campaign_transition = true
-			break_time = 3.0
-			SoundManager.play_sfx("victory", -4.0, 0.0)
-			_show_announcement("FIGHT WON!\nA NEW CHALLENGER APPROACHES", 2.0)
-			info_label.text = "NEXT FIGHT  03"
-			_update_ui()
-			return
-
-		fight_over = true
-		announcement_id += 1
-		if campaign_mode:
-			result_label.text = "YOU ARE THE CHAMPION!\nYOU WON EVERY FIGHT!"
-		else:
-			result_label.text = "VICTORY!\nYOU DEFEATED %s" % CAMPAIGN_NAMES[campaign_index]
-	elif winner == "enemy":
-		fight_over = true
-		announcement_id += 1
-		result_label.text = "DEFEAT\nROUND SCORE: %d - %d" % [player_rounds_won, enemy_rounds_won]
-	else:
-		fight_over = true
-		announcement_id += 1
-		result_label.text = "DRAW\nROUND SCORE: %d - %d" % [player_rounds_won, enemy_rounds_won]
-
-	SoundManager.set_crowd_enabled(false)
-	if winner == "player":
-		SoundManager.play_sfx("victory", -0.5, 0.0)
-	elif winner == "enemy":
-		SoundManager.play_sfx("defeat", -0.5, 0.0)
-	else:
-		SoundManager.play_sfx("draw", -1.0, 0.0)
-
-	info_label.text = "CAMPAIGN COMPLETE" if winner == "player" and campaign_mode else "FIGHT COMPLETE"
-	restart_button.visible = true
-	_update_ui()
+func _update_round_label() -> void:
+	if is_instance_valid(round_label):
+		round_label.text = "ROUND %d" % current_round
 
 
-func _start_next_fight() -> void:
-	if not campaign_mode or campaign_index >= CAMPAIGN_SCENES.size() - 1:
+# --------------------------------------------------
+# FIGHT SETUP
+# --------------------------------------------------
+
+func start_fight() -> void:
+	_start_new_match()
+
+
+func _start_new_match() -> void:
+	announcement_id += 1
+	fight_started = false
+	fight_finished = false
+	waiting_next_round = false
+	break_timer = 0.0
+
+	if not _spawn_boxers():
 		return
 
-	between_rounds = false
-	campaign_transition = false
-	break_time = 0.0
-	campaign_index += 1
-	if not _replace_enemy(CAMPAIGN_SCENES[campaign_index]):
-		fight_over = true
+	current_round = 1
+	player_round_wins = 0
+	enemy_round_wins = 0
+	round_timer = ROUND_DURATION
+
+	_start_round()
+
+
+func _spawn_boxers() -> bool:
+	if not ResourceLoader.exists(BOXER_SCENE):
+		push_error("Scene not found: " + BOXER_SCENE)
+		_show_message("ERROR: BOXER SCENE NOT FOUND")
+		return false
+
+	var packed := load(BOXER_SCENE) as PackedScene
+
+	if packed == null:
+		push_error("Could not load scene: " + BOXER_SCENE)
+		_show_message("ERROR: COULD NOT LOAD BOXER SCENE")
+		return false
+
+	_remove_boxers()
+
+	var new_player := packed.instantiate() as BoxerBase
+	var new_enemy := packed.instantiate() as BoxerBase
+
+	if new_player == null or new_enemy == null:
+		if is_instance_valid(new_player):
+			new_player.free()
+		if is_instance_valid(new_enemy):
+			new_enemy.free()
+
+		push_error("ChichoMedina.tscn must use BoxerBase.gd.")
+		_show_message("ERROR: INVALID BOXER SCENE")
+		return false
+
+	player = new_player
+	enemy = new_enemy
+
+	player.name = "Player"
+	enemy.name = "Enemy"
+
+	ring.add_child(player)
+	ring.add_child(enemy)
+
+	player.boxer_name = "PLAYER"
+	player.is_player = true
+
+	enemy.boxer_name = "OPPONENT"
+	enemy.is_player = false
+
+	player.position = Vector2(-100, 0)
+	enemy.position = Vector2(100, 0)
+
+	player.opponent = enemy
+	enemy.opponent = player
+
+	player.stats_changed.connect(_on_stats_changed)
+	enemy.stats_changed.connect(_on_stats_changed)
+
+	player.knocked_out.connect(_on_knockout)
+	enemy.knocked_out.connect(_on_knockout)
+
+	return true
+
+
+func _remove_boxers() -> void:
+	if is_instance_valid(player):
+		player.queue_free()
+
+	if is_instance_valid(enemy):
+		enemy.queue_free()
+
+	player = null
+	enemy = null
+
+
+func _start_round() -> void:
+	if not is_instance_valid(player) or not is_instance_valid(enemy):
 		return
 
-	round_number = 1
-	player_rounds_won = 0
-	enemy_rounds_won = 0
-	time_left = round_duration
-	fight_over = false
-	between_rounds = false
-	campaign_transition = false
 	player.reset_for_round()
 	enemy.reset_for_round()
-	player.position = player_start_position
-	enemy.position = enemy_start_position
-	restart_button.visible = false
-	result_label.text = ""
-	_show_announcement("NEXT CHALLENGER\n%s" % CAMPAIGN_NAMES[campaign_index], 2.0)
-	_update_camera_position(0.0)
-	_update_ui()
-	_save_progress(false)
-	_last_timer_tick = -1
-	SoundManager.play_sfx("round_bell", -1.0, 0.0)
+
+	player.opponent = enemy
+	enemy.opponent = player
+
+	player.position = Vector2(-100, 0)
+	enemy.position = Vector2(100, 0)
+
+	round_timer = ROUND_DURATION
+	break_timer = 0.0
+	fight_started = true
+	fight_finished = false
+	waiting_next_round = false
+
+	_setup_fight_ui()
+	_update_stats_ui()
+	_update_round_label()
+	_update_timer_label()
+
+	if current_round == 1:
+		_show_announcement("FIGHT!", 1.5)
+	else:
+		_show_announcement("ROUND %d" % current_round, 1.2)
+
+
+func _on_stats_changed(_boxer: BoxerBase) -> void:
+	_update_stats_ui()
+
+
+# --------------------------------------------------
+# ROUND FLOW
+# --------------------------------------------------
+
+func _on_knockout(boxer: BoxerBase) -> void:
+	if not fight_started or fight_finished or waiting_next_round:
+		return
+
+	fight_started = false
+
+	if boxer == player:
+		enemy_round_wins += 1
+		_show_round_result("YOU GOT KNOCKED OUT")
+	else:
+		player_round_wins += 1
+		_show_round_result("OPPONENT KNOCKED OUT!")
+
+
+func _end_round_by_time() -> void:
+	if not fight_started or fight_finished or waiting_next_round:
+		return
+
+	fight_started = false
+
+	if not is_instance_valid(player) or not is_instance_valid(enemy):
+		return
+
+	if player.health > enemy.health:
+		player_round_wins += 1
+		_show_round_result("ROUND WON!")
+	elif enemy.health > player.health:
+		enemy_round_wins += 1
+		_show_round_result("ROUND LOST!")
+	else:
+		_show_round_result("ROUND DRAW!")
+
+
+func _show_round_result(message: String) -> void:
+	if fight_finished:
+		return
+
+	announcement_id += 1
+	waiting_next_round = true
+	break_timer = 0.0
+
+	_update_stats_ui()
+
+	if is_instance_valid(result_label):
+		result_label.text = message
+		result_label.add_theme_color_override("font_color", GOLD_COLOR)
+
+	if is_instance_valid(score_label):
+		score_label.text = "ROUNDS  %d - %d" % [
+			player_round_wins, enemy_round_wins
+		]
+
+	await get_tree().create_timer(KO_DISPLAY_DURATION).timeout
+
+	if not is_inside_tree() or fight_finished:
+		return
+
+	if player_round_wins >= ROUNDS_TO_WIN:
+		_finish_fight(true)
+		return
+
+	if enemy_round_wins >= ROUNDS_TO_WIN:
+		_finish_fight(false)
+		return
+
+	if current_round >= TOTAL_ROUNDS:
+		if player_round_wins > enemy_round_wins:
+			_finish_fight(true)
+		elif enemy_round_wins > player_round_wins:
+			_finish_fight(false)
+		else:
+			_finish_fight(false, true)
+		return
+
+	break_timer = BREAK_DURATION
+
+	if is_instance_valid(result_label):
+		result_label.text = message + "\n\nNEXT ROUND SOON"
+
+	if is_instance_valid(timer_label):
+		timer_label.text = "BREAK  03"
+
+	_update_stats_ui()
 
 
 func _start_next_round() -> void:
-	round_number += 1
-	time_left = round_duration
-	between_rounds = false
-	campaign_transition = false
-	break_time = 0.0
-	player.reset_for_round()
-	enemy.reset_for_round()
-	player.position = player_start_position
-	enemy.position = enemy_start_position
-	result_label.text = ""
-	_update_camera_position(0.0)
-	_update_ui()
-	_save_progress(false)
-	_last_timer_tick = -1
-	SoundManager.play_sfx("round_bell", -1.0, 0.0)
+	if not waiting_next_round or fight_finished:
+		return
+
+	current_round += 1
+	_start_round()
 
 
-func _show_announcement(message: String, duration: float = 2.0) -> void:
+func _finish_fight(player_won: bool, is_draw: bool = false) -> void:
+	fight_started = false
+	fight_finished = true
+	waiting_next_round = false
+	break_timer = 0.0
+	announcement_id += 1
+
+	if player_won:
+		progress["wins"] = int(progress.get("wins", 0)) + 1
+		_show_final_result("VICTORY!")
+	elif is_draw:
+		_show_final_result("DRAW!")
+	else:
+		progress["losses"] = int(progress.get("losses", 0)) + 1
+		_show_final_result("DEFEAT")
+
+	save_progress()
+
+
+func _show_final_result(message: String) -> void:
+	if not is_instance_valid(hud):
+		return
+
+	if is_instance_valid(result_label):
+		result_label.text = message
+		result_label.add_theme_color_override(
+			"font_color",
+			GOLD_COLOR if message == "VICTORY!" else RED_COLOR
+		)
+
+	if is_instance_valid(timer_label):
+		timer_label.text = "FIGHT OVER"
+
+	if is_instance_valid(round_label):
+		round_label.text = "FINAL RESULT"
+
+	if is_instance_valid(score_label):
+		score_label.text = "FINAL SCORE  %d - %d" % [
+			player_round_wins, enemy_round_wins
+		]
+
+	if is_instance_valid(save_button):
+		save_button.visible = false
+
+	var rematch_button := Button.new()
+	rematch_button.text = "REMATCH"
+	rematch_button.position = Vector2(350, 330)
+	rematch_button.size = Vector2(120, 40)
+	_style_button(rematch_button, Color("#a83240"), Color("#f06b76"))
+	rematch_button.pressed.connect(_start_rematch)
+	hud.add_child(rematch_button)
+
+	var menu_button := Button.new()
+	menu_button.text = "MAIN MENU"
+	menu_button.position = Vector2(490, 330)
+	menu_button.size = Vector2(120, 40)
+	_style_button(menu_button, Color("#252c38"), Color("#5c6579"))
+	menu_button.pressed.connect(show_main_menu)
+	hud.add_child(menu_button)
+
+
+func _start_rematch() -> void:
+	announcement_id += 1
+	_start_new_match()
+
+
+func _show_announcement(message: String, duration: float = 1.5) -> void:
 	if not is_instance_valid(result_label):
 		return
 
 	announcement_id += 1
-	var current_announcement := announcement_id
+	var current_id := announcement_id
+
 	result_label.text = message
 	result_label.add_theme_color_override("font_color", RED_COLOR)
-	get_tree().create_timer(duration).timeout.connect(
-		func() -> void:
-			if not is_instance_valid(result_label):
-				return
-			if current_announcement == announcement_id and not fight_over:
-				result_label.text = ""
+
+	await get_tree().create_timer(duration).timeout
+
+	if not is_inside_tree() or not is_instance_valid(result_label):
+		return
+
+	if (
+		current_id == announcement_id
+		and not waiting_next_round
+		and not fight_finished
+	):
+		result_label.text = ""
+
+
+func _show_message(message: String) -> void:
+	fight_started = false
+	fight_finished = false
+	waiting_next_round = false
+	announcement_id += 1
+
+	_clear_ui()
+
+	var error_screen := Control.new()
+	error_screen.name = "ErrorScreen"
+	error_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fight_ui.add_child(error_screen)
+
+	var background := ColorRect.new()
+	background.color = Color(0.035, 0.045, 0.065, 0.97)
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	error_screen.add_child(background)
+
+	var label := _make_label(
+		error_screen,
+		"ErrorLabel",
+		message,
+		Vector2(30, 30),
+		Vector2(700, 70),
+		22,
+		RED_COLOR
+	)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	var button := Button.new()
+	button.text = "BACK TO MAIN MENU"
+	button.position = Vector2(30, 115)
+	button.size = Vector2(220, 42)
+
+	_style_button(button, Color("#a83240"), Color("#f06b76"))
+	button.pressed.connect(show_main_menu)
+	error_screen.add_child(button)
+
+
+# --------------------------------------------------
+# CAREER RECORD
+# --------------------------------------------------
+
+func show_progress() -> void:
+	fight_started = false
+	fight_finished = false
+	waiting_next_round = false
+	break_timer = 0.0
+	announcement_id += 1
+
+	_clear_ui()
+
+	var screen := Control.new()
+	screen.name = "ProgressScreen"
+	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fight_ui.add_child(screen)
+
+	var background := ColorRect.new()
+	background.name = "ProgressBackground"
+	background.color = Color(0.035, 0.045, 0.065, 0.97)
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.add_child(background)
+
+	_make_label(
+		screen, "ProgressTitle", "CAREER RECORD",
+		Vector2(30, 30), Vector2(500, 50), 32, GOLD_COLOR
 	)
 
+	_make_label(
+		screen, "WinsLabel",
+		"WINS: %d" % int(progress.get("wins", 0)),
+		Vector2(30, 100), Vector2(300, 35), 22, TEXT_COLOR
+	)
 
-# -------------------------------------------------------------------
+	_make_label(
+		screen, "LossesLabel",
+		"LOSSES: %d" % int(progress.get("losses", 0)),
+		Vector2(30, 145), Vector2(300, 35), 22, TEXT_COLOR
+	)
+
+	var back_button := Button.new()
+	back_button.name = "BackButton"
+	back_button.text = "BACK"
+	back_button.position = Vector2(30, 215)
+	back_button.size = Vector2(180, 42)
+
+	_style_button(back_button, Color("#252c38"), Color("#5c6579"))
+	back_button.pressed.connect(show_main_menu)
+	screen.add_child(back_button)
+
+
+# --------------------------------------------------
 # SAVE / LOAD
-# -------------------------------------------------------------------
+# --------------------------------------------------
 
-func _save_progress(show_feedback: bool = true) -> void:
-	if fight_over or between_rounds or not is_instance_valid(player) or not is_instance_valid(enemy):
-		if show_feedback and is_instance_valid(save_button):
-			save_button.text = "SAVE UNAVAILABLE"
-			SoundManager.play_sfx("ui_error", -5.0, 0.0)
-		return
-
-	var data: Dictionary = {
-		"campaign_mode": campaign_mode,
-		"campaign_index": campaign_index,
-		"round_number": round_number,
-		"player_rounds_won": player_rounds_won,
-		"enemy_rounds_won": enemy_rounds_won,
-		"time_left": time_left,
-		"player_health": player.health,
-		"player_stamina": player.stamina,
-		"enemy_health": enemy.health,
-		"enemy_stamina": enemy.stamina
-	}
+func save_progress() -> void:
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+
 	if file == null:
-		push_warning("Could not save progress to the user data folder.")
-		if show_feedback and is_instance_valid(save_button):
-			save_button.text = "SAVE FAILED"
-			SoundManager.play_sfx("ui_error", -3.0, 0.0)
+		push_error("Could not save progress.")
 		return
-	file.store_string(JSON.stringify(data, "\t"))
+
+	file.store_string(JSON.stringify(progress))
 	file.close()
 
-	if show_feedback and is_instance_valid(save_button):
-		save_button.text = "SAVED!"
-		SoundManager.play_sfx("save_success", -2.0, 0.0)
-		save_feedback_id += 1
-		var current_feedback := save_feedback_id
-		get_tree().create_timer(1.5).timeout.connect(
-			func() -> void:
-				if is_instance_valid(save_button) and current_feedback == save_feedback_id:
-					save_button.text = "SAVE PROGRESS"
-		)
+	saved_progress = progress.duplicate(true)
 
-	saved_progress = data
-	_refresh_continue_button()
+	if is_instance_valid(continue_button):
+		continue_button.disabled = saved_progress.is_empty()
 
 
-func _load_progress() -> Dictionary:
+func load_progress() -> void:
+	progress = {
+		"wins": 0,
+		"losses": 0
+	}
+	saved_progress.clear()
+
 	if not FileAccess.file_exists(SAVE_PATH):
-		return {}
+		return
+
 	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+
 	if file == null:
-		return {}
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
+		push_error("Could not read progress.")
+		return
+
+	var content := file.get_as_text()
 	file.close()
+
+	var parsed: Variant = JSON.parse_string(content)
+
 	if parsed is Dictionary:
-		return parsed
-	return {}
+		progress["wins"] = int(parsed.get("wins", 0))
+		progress["losses"] = int(parsed.get("losses", 0))
+		saved_progress = progress.duplicate(true)
+
+
+func _resume_saved_progress() -> void:
+	# Se conserva el registro de carrera, pero no el estado de la pelea.
+	start_fight()
+
+
+# --------------------------------------------------
+# EXIT
+# --------------------------------------------------
+
+func _exit_game() -> void:
+	get_tree().quit()

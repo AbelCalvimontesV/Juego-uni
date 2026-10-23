@@ -1,3 +1,3 @@
-res://Scenes/HitEffect.tscn
+res://Scenes/Main.tscn
 res://assets/chroma_key.gdshader
-res://scripts/combat/boxer.gd
+res://scripts/managers/fight_manager.gd
